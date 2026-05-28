@@ -250,15 +250,6 @@ By building and studying this project you will gain hands-on experience with:
 - 📋 Follow your organization's security policy and applicable laws (CFAA, GDPR, etc.)
 - 🎓 Use the simulator output for training, not deception
 
----
-
-## 🤝 Contributing
-
-Pull requests are welcome! Please:
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/ml-classifier`)
-3. Add tests for new functionality
-4. Submit a PR with a clear description
 
 ---
 [![](https://visitcount.itsvg.in/api?id=souvikdutta002&icon=0&color=3)](https://visitcount.itsvg.in)
