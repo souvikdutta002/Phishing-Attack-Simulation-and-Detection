@@ -1,7 +1,6 @@
 # 🛡️ PhishGuard — Phishing Attack Simulation & Detection
 
 [![Python](https://img.shields.io/badge/Python-3.9%2B-blue?logo=python)](https://python.org)
-[![License](https://img.shields.io/badge/License-MIT-green)](LICENSE)
 [![Tests](https://img.shields.io/badge/Tests-Pytest-brightgreen)](tests/)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 
@@ -21,7 +20,6 @@ A modular Python toolkit for **phishing attack simulation** and **multi-layer de
 - [Skills Learned](#skills-learned)
 - [Ethical Use](#ethical-use)
 - [Contributing](#contributing)
-- [License](#license)
 
 ---
 
@@ -263,7 +261,33 @@ Pull requests are welcome! Please:
 4. Submit a PR with a clear description
 
 ---
+[![](https://visitcount.itsvg.in/api?id=souvikdutta002&icon=0&color=3)](https://visitcount.itsvg.in)
+
+
+<h2 align="center">✨ Thank You for Visiting My Profile ✨</h2>
+
+<p align="center">
+I truly appreciate you taking the time to explore my GitHub profile.<br>
+I'm constantly learning and building projects in <b>Cybersecurity, Ethical Hacking, and Software Development</b>.
+</p>
+
+<p align="center">
+⭐ Consider giving a <b>Star</b> to the repositories you like <br>
+🍴 Feel free to <b>Fork</b> and explore the code <br>
+🤝 Let's connect and collaborate
+</p>
+
+<p align="center">
+<img src="https://img.shields.io/badge/Focus-Cybersecurity-blue?style=for-the-badge">
+<img src="https://img.shields.io/badge/Learning-Ethical%20Hacking-green?style=for-the-badge">
+<img src="https://img.shields.io/badge/Goal-Penetration_Testing-red?style=for-the-badge">
+</p>
+
+<p align="center">
+<i>*Built for cybersecurity education. Always hack ethically.* 🛡️
+</i>
+</p>
 
 
 
-*Built for cybersecurity education. Always hack ethically.* 🛡️
+
