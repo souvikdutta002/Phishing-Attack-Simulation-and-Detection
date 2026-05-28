@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PhishGuard — Phishing Detection & Simulation</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600;700&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; background: #020817; }
+    body { font-family: 'IBM Plex Mono', monospace; color: #e2e8f0; }
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: #0f172a; }
+    ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 3px; }
+    input, textarea, button { font-family: 'IBM Plex Mono', monospace; }
+    input:focus, textarea:focus { outline: 1px solid #7c3aed88 !important; }
+  </style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel">
+const { useState } = React;
+
+// ── Detection Logic ────────────────────────────────────────────────────────
+const URGENCY_PATTERNS = [
+  /act now/i, /urgent/i, /immediately/i, /expires?/i, /limited time/i,
+  /within 24 hours/i, /your account.*(suspended|closed|locked)/i,
+  /verify.*immediately/i,
+];
+const CREDENTIAL_PATTERNS = [
+  /enter.*?(password|username|credentials)/i,
+  /confirm.*?(account|identity)/i,
+  /update.*?(billing|payment|credit card)/i,
+  /social security/i,
+];
+const SUSPICIOUS_URL_PATTERNS = [
+  /bit\.ly|tinyurl|goo\.gl/i,
+  /@/,
+  /\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}/,
+  /(paypal|amazon|apple|google)[^.]*\.(xyz|tk|ml|top)/i,
+];
+const SUSPICIOUS_TLDS = new Set(["xyz","tk","ml","ga","cf","top","click","download"]);
+
+function analyzeEmail({ sender, subject, body, urls }) {
+  const flags = []; let score = 0;
+  const domain = (sender.match(/@([\w.-]+)/) || [])[1]?.toLowerCase() || "";
+  const tld = domain.split(".").at(-1);
+  if (SUSPICIOUS_TLDS.has(tld))    { flags.push({ cat:"sender",  msg:`Suspicious TLD: .${tld}`, w:15 }); score+=15; }
+  if (/no[-_]?reply@(?!.*(google|amazon|microsoft))/.test(sender))
+                                    { flags.push({ cat:"sender",  msg:"Suspicious no-reply sender", w:10 }); score+=10; }
+  if (URGENCY_PATTERNS.some(p=>p.test(subject)))
+                                    { flags.push({ cat:"subject", msg:"Urgency language in subject", w:10 }); score+=10; }
+  if (/[A-Z]{4,}/.test(subject))   { flags.push({ cat:"subject", msg:"Excessive CAPS in subject", w:5 }); score+=5; }
+  if ((subject.match(/!/g)||[]).length>=2)
+                                    { flags.push({ cat:"subject", msg:"Multiple exclamation marks", w:5 }); score+=5; }
+  const urgHits = URGENCY_PATTERNS.filter(p=>p.test(body)).length;
+  if (urgHits>=2)                   { flags.push({ cat:"body", msg:`Multiple urgency phrases (${urgHits})`, w:urgHits*5 }); score+=urgHits*5; }
+  if (CREDENTIAL_PATTERNS.some(p=>p.test(body)))
+                                    { flags.push({ cat:"body", msg:"Credential harvesting language", w:25 }); score+=25; }
+  if (/dear (customer|user|member|account holder)/i.test(body))
+                                    { flags.push({ cat:"body", msg:"Generic salutation (no name)", w:10 }); score+=10; }
+  for (const url of (urls||"").split("\n").filter(Boolean)) {
+    if (SUSPICIOUS_URL_PATTERNS.some(p=>p.test(url))) { flags.push({ cat:"url", msg:`Suspicious URL: ${url.slice(0,50)}`, w:20 }); score+=20; break; }
+    if (url.startsWith("http://"))  { flags.push({ cat:"url", msg:"Unencrypted HTTP link", w:10 }); score+=10; }
+  }
+  score = Math.min(score, 100);
+  const risk = score>=70?"CRITICAL":score>=45?"HIGH":score>=20?"MEDIUM":"LOW";
+  return { score, risk, isPhishing: score>=20, flags };
+}
+
+// ── Constants ──────────────────────────────────────────────────────────────
+const riskColor = { LOW:"#22c55e", MEDIUM:"#f59e0b", HIGH:"#ef4444", CRITICAL:"#7c3aed" };
+const riskBg    = { LOW:"#052e16", MEDIUM:"#422006", HIGH:"#2d0a0a", CRITICAL:"#1e0a3c" };
+const catColor  = { sender:"#60a5fa", subject:"#f472b6", body:"#fb923c", url:"#a78bfa" };
+
+const TEMPLATES = [
+  { key:"account_suspension", label:"Account Suspension" },
+  { key:"password_reset",     label:"Fake Password Reset" },
+  { key:"prize_winner",       label:"Prize Scam" },
+  { key:"invoice_fraud",      label:"Invoice Fraud" },
+];
+const SIM_DATA = {
+  account_suspension: { sender:"no-reply@paypal-verify.xyz", subject:"URGENT: Your account has been SUSPENDED!", body:"Dear Customer,\n\nWe detected suspicious activity. Verify your account IMMEDIATELY or it will be closed within 24 hours.\n\nEnter your username and password now.", urls:"http://paypal-login.tk/verify?token=abc123" },
+  password_reset:     { sender:"security@apple-id-reset.top", subject:"Reset your Apple password — expires in 24 hours", body:"Dear Account Holder,\n\nA password reset was requested. Click below immediately to set a new password or your account will be locked.", urls:"http://apple-secure.ml/reset?id=xk9z2m" },
+  prize_winner:       { sender:"rewards@amazon-winner.xyz", subject:"Congratulations!! You've WON a $1,000 Amazon Gift Card!!", body:"Dear Valued Customer,\n\nYou have been randomly selected as a winner! Claim your prize within 24 hours. A small verification fee of $4.99 is required.", urls:"http://amazon-rewards.tk/claim?token=prize99" },
+  invoice_fraud:      { sender:"billing@netflix-invoice.ml", subject:"Invoice #847291 — Payment Due", body:"Dear Account Holder,\n\nYour Netflix subscription has been renewed for $149.99. To review or cancel this charge, enter your credentials at the link below.", urls:"http://netflix-billing.xyz/review?inv=847291" },
+};
+
+// ── Sub-components ─────────────────────────────────────────────────────────
+function GlowBar({ score, risk }) {
+  const c = riskColor[risk];
+  return (
+    <div style={{ margin:"20px 0" }}>
+      <div style={{ display:"flex", justifyContent:"space-between", marginBottom:6 }}>
+        <span style={{ color:"#94a3b8", fontSize:12 }}>Risk Score</span>
+        <span style={{ color:c, fontWeight:700, fontSize:17 }}>{score}/100</span>
+      </div>
+      <div style={{ background:"#1e293b", borderRadius:999, height:10, overflow:"hidden" }}>
+        <div style={{ width:`${score}%`, height:"100%", borderRadius:999, background:`linear-gradient(90deg,${c}88,${c})`, transition:"width .6s", boxShadow:`0 0 12px ${c}88` }} />
+      </div>
+    </div>
+  );
+}
+
+function Badge({ label, color }) {
+  return <span style={{ display:"inline-block", padding:"2px 9px", borderRadius:999, fontSize:10, fontWeight:700, letterSpacing:1, background:color+"22", color, border:`1px solid ${color}44` }}>{label}</span>;
+}
+
+function FlagRow({ flag }) {
+  const c = catColor[flag.cat] || "#94a3b8";
+  return (
+    <div style={{ display:"flex", alignItems:"center", gap:10, padding:"8px 12px", borderRadius:8, background:"#020817", border:"1px solid #1e293b", marginBottom:6 }}>
+      <Badge label={flag.cat.toUpperCase()} color={c} />
+      <span style={{ color:"#cbd5e1", fontSize:12, flex:1 }}>{flag.msg}</span>
+      <span style={{ color:c, fontSize:11 }}>+{flag.w}</span>
+    </div>
+  );
+}
+
+// ── Main App ───────────────────────────────────────────────────────────────
+function App() {
+  const [tab,       setTab]       = useState("detect");
+  const [form,      setForm]      = useState({ sender:"", subject:"", body:"", urls:"" });
+  const [result,    setResult]    = useState(null);
+  const [simKey,    setSimKey]    = useState("account_suspension");
+  const [simResult, setSimResult] = useState(null);
+  const [history,   setHistory]   = useState([]);
+
+  const upd = (k,v) => setForm(f=>({...f,[k]:v}));
+
+  const run = () => {
+    if (!form.sender && !form.subject && !form.body) return;
+    const r = analyzeEmail(form);
+    setResult(r);
+    setHistory(h => [{ ...form, ...r, ts: new Date().toLocaleTimeString() }, ...h.slice(0,9)]);
+  };
+
+  const loadSim = key => {
+    setSimKey(key);
+    const d = SIM_DATA[key];
+    setForm(d);
+    setSimResult(analyzeEmail(d));
+    setResult(null);
+  };
+
+  const clear = () => { setForm({ sender:"", subject:"", body:"", urls:"" }); setResult(null); };
+
+  const inp = { background:"#020817", border:"1px solid #1e293b", borderRadius:8, color:"#e2e8f0", padding:"10px 14px", fontSize:13, width:"100%", resize:"vertical" };
+
+  return (
+    <div style={{ minHeight:"100vh", background:"#020817", paddingBottom:60 }}>
+
+      {/* ── Header ── */}
+      <div style={{ background:"linear-gradient(135deg,#0f172a,#1e0a3c)", borderBottom:"1px solid #1e293b", padding:"24px 32px 18px" }}>
+        <div style={{ maxWidth:960, margin:"0 auto", display:"flex", alignItems:"center", gap:14, flexWrap:"wrap" }}>
+          <div style={{ width:42, height:42, borderRadius:10, display:"flex", alignItems:"center", justifyContent:"center", fontSize:20, background:"linear-gradient(135deg,#7c3aed,#2563eb)", boxShadow:"0 0 20px #7c3aed55" }}>🛡️</div>
+          <div>
+            <div style={{ fontSize:18, fontWeight:700, letterSpacing:3 }}>PHISHGUARD</div>
+            <div style={{ fontSize:10, color:"#64748b", letterSpacing:2 }}>PHISHING DETECTION & SIMULATION TOOLKIT</div>
+          </div>
+          <div style={{ marginLeft:"auto", display:"flex", gap:8, flexWrap:"wrap" }}>
+            {[["detect","🔍 Detect"],["simulate","⚡ Simulate"],["history","📋 History"]].map(([k,l])=>(
+              <button key={k} onClick={()=>setTab(k)} style={{ padding:"8px 16px", borderRadius:8, cursor:"pointer", fontSize:11, fontWeight:700, letterSpacing:1, border:"none", background:tab===k?"linear-gradient(135deg,#7c3aed,#2563eb)":"#1e293b", color:tab===k?"#fff":"#64748b", boxShadow:tab===k?"0 0 12px #7c3aed44":"none" }}>{l}</button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div style={{ maxWidth:960, margin:"0 auto", padding:"28px 20px" }}>
+
+        {/* ── DETECT ── */}
+        {tab==="detect" && (
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:20 }}>
+            {/* Input */}
+            <div style={{ background:"#0f172a", borderRadius:12, border:"1px solid #1e293b", padding:22 }}>
+              <div style={{ fontSize:11, color:"#64748b", marginBottom:18, letterSpacing:1 }}>EMAIL ANALYSIS INPUT</div>
+              {[["sender","From / Sender","no-reply@example.com",false],["subject","Subject","Enter subject line...",false],["body","Body","Paste email body here...",true],["urls","URLs (one per line)","http://suspicious.com",true]].map(([k,label,ph,multi])=>(
+                <div key={k} style={{ marginBottom:13 }}>
+                  <div style={{ fontSize:10, color:"#64748b", marginBottom:5, letterSpacing:1 }}>{label.toUpperCase()}</div>
+                  {multi
+                    ? <textarea value={form[k]} onChange={e=>upd(k,e.target.value)} placeholder={ph} rows={k==="body"?5:3} style={inp} />
+                    : <input   value={form[k]} onChange={e=>upd(k,e.target.value)} placeholder={ph} style={{...inp,resize:undefined}} />}
+                </div>
+              ))}
+              <div style={{ display:"flex", gap:10, marginTop:6 }}>
+                <button onClick={run} style={{ flex:1, padding:"12px", borderRadius:8, border:"none", background:"linear-gradient(135deg,#7c3aed,#2563eb)", color:"#fff", fontWeight:700, fontSize:12, cursor:"pointer", letterSpacing:1, boxShadow:"0 0 16px #7c3aed44" }}>ANALYZE →</button>
+                <button onClick={clear} style={{ padding:"12px 16px", borderRadius:8, border:"1px solid #1e293b", background:"transparent", color:"#64748b", cursor:"pointer", fontSize:12 }}>Clear</button>
+              </div>
+            </div>
+
+            {/* Result */}
+            <div style={{ background:"#0f172a", borderRadius:12, border:"1px solid #1e293b", padding:22 }}>
+              <div style={{ fontSize:11, color:"#64748b", marginBottom:18, letterSpacing:1 }}>DETECTION RESULT</div>
+              {result ? (
+                <>
+                  <div style={{ padding:"14px 18px", borderRadius:10, marginBottom:18, background:riskBg[result.risk], border:`1px solid ${riskColor[result.risk]}33` }}>
+                    <div style={{ fontSize:10, color:"#64748b", marginBottom:3 }}>VERDICT</div>
+                    <div style={{ fontSize:20, fontWeight:700, color:riskColor[result.risk] }}>{result.isPhishing?"⚠ PHISHING DETECTED":"✅ LIKELY SAFE"}</div>
+                    <div style={{ fontSize:12, color:"#64748b", marginTop:3 }}>Risk Level: <span style={{ color:riskColor[result.risk] }}>{result.risk}</span></div>
+                  </div>
+                  <GlowBar score={result.score} risk={result.risk} />
+                  {result.flags.length > 0 && <>
+                    <div style={{ fontSize:10, color:"#64748b", marginBottom:8, letterSpacing:1 }}>TRIGGERED SIGNALS ({result.flags.length})</div>
+                    {result.flags.map((f,i) => <FlagRow key={i} flag={f} />)}
+                  </>}
+                  {result.flags.length===0 && <div style={{ color:"#22c55e", fontSize:13 }}>No phishing signals detected.</div>}
+                </>
+              ) : (
+                <div style={{ color:"#334155", textAlign:"center", marginTop:60, fontSize:13 }}>Fill in the email fields and click ANALYZE</div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ── SIMULATE ── */}
+        {tab==="simulate" && (
+          <div>
+            <div style={{ marginBottom:18, padding:14, background:"#422006", borderRadius:10, border:"1px solid #92400e33", fontSize:12, color:"#fbbf24" }}>⚠ For authorized security awareness training only. Never use on real users without written consent.</div>
+            <div style={{ display:"grid", gridTemplateColumns:"200px 1fr", gap:20 }}>
+              <div style={{ background:"#0f172a", borderRadius:12, border:"1px solid #1e293b", padding:18 }}>
+                <div style={{ fontSize:10, color:"#64748b", marginBottom:12, letterSpacing:1 }}>TEMPLATE</div>
+                {TEMPLATES.map(t=>(
+                  <button key={t.key} onClick={()=>loadSim(t.key)} style={{ display:"block", width:"100%", textAlign:"left", padding:"10px 12px", borderRadius:8, border:"none", marginBottom:6, cursor:"pointer", fontSize:11, background:simKey===t.key?"linear-gradient(135deg,#7c3aed22,#2563eb22)":"#020817", color:simKey===t.key?"#a78bfa":"#64748b", borderLeft:simKey===t.key?"3px solid #7c3aed":"3px solid transparent" }}>{t.label}</button>
+                ))}
+              </div>
+              <div>
+                {simResult ? (
+                  <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:16 }}>
+                    <div style={{ background:"#0f172a", borderRadius:12, border:"1px solid #1e293b", padding:18 }}>
+                      <div style={{ fontSize:10, color:"#64748b", marginBottom:10, letterSpacing:1 }}>GENERATED EMAIL</div>
+                      <div style={{ fontSize:10, color:"#64748b" }}>FROM</div>
+                      <div style={{ color:"#ef4444", fontSize:11, marginBottom:9, wordBreak:"break-all" }}>{SIM_DATA[simKey].sender}</div>
+                      <div style={{ fontSize:10, color:"#64748b" }}>SUBJECT</div>
+                      <div style={{ color:"#fbbf24", fontSize:12, marginBottom:9 }}>{SIM_DATA[simKey].subject}</div>
+                      <div style={{ fontSize:10, color:"#64748b" }}>BODY</div>
+                      <div style={{ color:"#94a3b8", fontSize:11, lineHeight:1.7, whiteSpace:"pre-line" }}>{SIM_DATA[simKey].body}</div>
+                      <div style={{ marginTop:9, fontSize:10, color:"#64748b" }}>URL</div>
+                      <div style={{ color:"#a78bfa", fontSize:11, wordBreak:"break-all" }}>{SIM_DATA[simKey].urls}</div>
+                    </div>
+                    <div style={{ background:"#0f172a", borderRadius:12, border:"1px solid #1e293b", padding:18 }}>
+                      <div style={{ fontSize:10, color:"#64748b", marginBottom:10, letterSpacing:1 }}>ANALYSIS</div>
+                      <div style={{ padding:"12px 14px", borderRadius:8, marginBottom:14, background:riskBg[simResult.risk], border:`1px solid ${riskColor[simResult.risk]}33` }}>
+                        <div style={{ color:riskColor[simResult.risk], fontWeight:700, fontSize:15 }}>{simResult.risk} RISK</div>
+                        <div style={{ color:"#64748b", fontSize:11 }}>Score: {simResult.score}/100</div>
+                      </div>
+                      <GlowBar score={simResult.score} risk={simResult.risk} />
+                      <div style={{ fontSize:10, color:"#64748b", marginBottom:7, letterSpacing:1 }}>INDICATORS</div>
+                      {simResult.flags.map((f,i) => <FlagRow key={i} flag={f} />)}
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ color:"#334155", textAlign:"center", marginTop:80, fontSize:13 }}>Select a template to generate a simulation</div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── HISTORY ── */}
+        {tab==="history" && (
+          <div>
+            <div style={{ fontSize:11, color:"#64748b", marginBottom:18, letterSpacing:1 }}>ANALYSIS HISTORY</div>
+            {history.length===0
+              ? <div style={{ color:"#334155", textAlign:"center", marginTop:80, fontSize:13 }}>No scans yet — go to the Detect tab to analyse emails.</div>
+              : history.map((h,i) => (
+                <div key={i} style={{ background:"#0f172a", border:"1px solid #1e293b", borderRadius:10, padding:"14px 18px", marginBottom:10, borderLeft:`3px solid ${riskColor[h.risk]}` }}>
+                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                    <div>
+                      <div style={{ color:"#e2e8f0", fontSize:13 }}>{h.subject || "(no subject)"}</div>
+                      <div style={{ color:"#64748b", fontSize:11, marginTop:3 }}>From: {h.sender} · {h.ts}</div>
+                    </div>
+                    <div style={{ textAlign:"right" }}>
+                      <div style={{ color:riskColor[h.risk], fontWeight:700 }}>{h.risk}</div>
+                      <div style={{ color:"#64748b", fontSize:11 }}>{h.score}/100</div>
+                    </div>
+                  </div>
+                </div>
+              ))
+            }
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>
