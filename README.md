@@ -90,7 +90,7 @@ phishing-detector/
 
 ```bash
 # Clone
-git clone https://github.com/YOUR_USERNAME/phishing-detector.git
+git clone https://github.com/souvikdutta002/Phishing-Attack-Simulation-and-Detection.git
 cd phishing-detector
 
 # Install deps (zero required for the core detector)
