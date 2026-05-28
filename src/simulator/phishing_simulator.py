@@ -1,0 +1,246 @@
+"""
+Phishing Simulation Engine
+Generates realistic phishing email templates for awareness training.
+⚠ FOR AUTHORIZED SECURITY AWARENESS TRAINING ONLY ⚠
+"""
+
+import random
+import string
+from dataclasses import dataclass
+from typing import List, Dict
+from datetime import datetime, timedelta
+
+
+# ── Template Library ──────────────────────────────────────────────────────────
+
+SIMULATION_TEMPLATES = {
+    "account_suspension": {
+        "name": "Account Suspension",
+        "difficulty": "easy",
+        "subject_variants": [
+            "⚠ Your account has been suspended",
+            "Action Required: Account Verification",
+            "URGENT: Verify your account immediately",
+        ],
+        "body_template": (
+            "Dear {salutation},\n\n"
+            "We have detected unusual activity on your {brand} account. "
+            "To protect your security, your account has been temporarily suspended.\n\n"
+            "To restore access, please verify your identity within {hours} hours:\n"
+            "  → {fake_link}\n\n"
+            "If you do not verify, your account will be permanently closed.\n\n"
+            "Best regards,\n{brand} Security Team\n"
+            "© {year} {brand} Inc."
+        ),
+        "indicators": [
+            "Generic salutation",
+            "Urgency pressure",
+            "Threat of account loss",
+            "Suspicious link",
+        ],
+    },
+    "password_reset": {
+        "name": "Fake Password Reset",
+        "difficulty": "medium",
+        "subject_variants": [
+            "Password reset request for your account",
+            "Reset your {brand} password",
+            "Someone requested a password change",
+        ],
+        "body_template": (
+            "Hi {salutation},\n\n"
+            "A password reset was requested for the {brand} account associated with this email.\n\n"
+            "Click the link below to set a new password. "
+            "This link expires in {hours} hours:\n"
+            "  {fake_link}\n\n"
+            "If you didn't request this, you can ignore this email. "
+            "However, we recommend you secure your account.\n\n"
+            "Thanks,\nThe {brand} Team"
+        ),
+        "indicators": [
+            "Unsolicited password reset",
+            "Time pressure",
+            "Suspicious reset link",
+        ],
+    },
+    "prize_winner": {
+        "name": "Prize / Lottery Scam",
+        "difficulty": "easy",
+        "subject_variants": [
+            "Congratulations! You've been selected",
+            "You're our lucky winner! Claim your prize",
+            "🎉 Special reward waiting for you",
+        ],
+        "body_template": (
+            "Dear Valued Customer,\n\n"
+            "Congratulations! You have been randomly selected as a winner "
+            "of our {brand} Loyalty Rewards Program.\n\n"
+            "Your prize: ${prize_amount} gift card\n\n"
+            "Claim your reward here (expires in {hours} hours):\n"
+            "  {fake_link}\n\n"
+            "Note: A small verification fee of ${fee} may be required.\n\n"
+            "Best wishes,\n{brand} Rewards Team"
+        ),
+        "indicators": [
+            "Unexpected prize",
+            "Urgency deadline",
+            "Small fee request (advance-fee fraud)",
+            "Generic salutation",
+        ],
+    },
+    "invoice_fraud": {
+        "name": "Fake Invoice",
+        "difficulty": "hard",
+        "subject_variants": [
+            "Invoice #{invoice_num} — Payment Due",
+            "Your {brand} subscription renewal",
+            "Receipt for your recent purchase",
+        ],
+        "body_template": (
+            "Dear {salutation},\n\n"
+            "Thank you for your continued {brand} subscription.\n\n"
+            "Invoice Details:\n"
+            "  Invoice No : #{invoice_num}\n"
+            "  Amount     : ${amount}\n"
+            "  Due Date   : {due_date}\n\n"
+            "To review or cancel this charge, visit:\n"
+            "  {fake_link}\n\n"
+            "If you have questions, reply to this email or call {fake_phone}.\n\n"
+            "Thank you,\n{brand} Billing Team"
+        ),
+        "indicators": [
+            "Unexpected invoice",
+            "False urgency via due date",
+            "Suspicious review link",
+            "Fake phone number",
+        ],
+    },
+}
+
+FAKE_BRANDS = ['Netflix', 'Amazon', 'PayPal', 'Apple', 'Microsoft', 'Google']
+SALUTATIONS = ['Customer', 'Valued User', 'Account Holder', 'Member']
+
+
+# ── Simulation Engine ─────────────────────────────────────────────────────────
+
+@dataclass
+class SimulatedPhishing:
+    template_name: str
+    difficulty: str
+    sender: str
+    subject: str
+    body: str
+    fake_url: str
+    indicators: List[str]
+    teaching_notes: str
+
+
+class PhishingSimulator:
+    """
+    Generates phishing emails for security awareness training.
+    ONLY use with explicit written authorization.
+    """
+
+    DISCLAIMER = (
+        "\n[SIMULATION] This is a TRAINING email generated by PhishGuard.\n"
+        "If this were real, here's what to look for:\n"
+    )
+
+    def generate(
+        self,
+        template_key: str = "account_suspension",
+        brand: str = None,
+        include_disclaimer: bool = True,
+    ) -> SimulatedPhishing:
+        tmpl = SIMULATION_TEMPLATES.get(template_key)
+        if not tmpl:
+            raise ValueError(f"Unknown template '{template_key}'. "
+                             f"Available: {list(SIMULATION_TEMPLATES.keys())}")
+
+        brand     = brand or random.choice(FAKE_BRANDS)
+        fake_url  = self._generate_fake_url(brand)
+        hours     = random.choice([24, 48, 12])
+        due_date  = (datetime.now() + timedelta(days=7)).strftime('%B %d, %Y')
+
+        ctx = {
+            "brand":        brand,
+            "salutation":   random.choice(SALUTATIONS),
+            "fake_link":    fake_url,
+            "hours":        hours,
+            "year":         datetime.now().year,
+            "invoice_num":  random.randint(100000, 999999),
+            "amount":       f"{random.uniform(9.99, 199.99):.2f}",
+            "prize_amount": random.choice([500, 1000, 2500]),
+            "fee":          random.choice([1.99, 4.99, 9.99]),
+            "due_date":     due_date,
+            "fake_phone":   self._fake_phone(),
+        }
+
+        subject = random.choice(tmpl["subject_variants"]).format(**ctx)
+        body    = tmpl["body_template"].format(**ctx)
+
+        if include_disclaimer:
+            indicator_list = "\n".join(f"  • {i}" for i in tmpl["indicators"])
+            body += self.DISCLAIMER + indicator_list
+
+        sender = self._generate_fake_sender(brand)
+
+        notes = self._build_teaching_notes(tmpl["indicators"], fake_url, sender)
+
+        return SimulatedPhishing(
+            template_name  = tmpl["name"],
+            difficulty     = tmpl["difficulty"],
+            sender         = sender,
+            subject        = subject,
+            body           = body,
+            fake_url       = fake_url,
+            indicators     = tmpl["indicators"],
+            teaching_notes = notes,
+        )
+
+    def list_templates(self) -> List[Dict]:
+        return [
+            {"key": k, "name": v["name"], "difficulty": v["difficulty"]}
+            for k, v in SIMULATION_TEMPLATES.items()
+        ]
+
+    # ── Helpers ───────────────────────────────────────────────────────────────
+
+    def _generate_fake_url(self, brand: str) -> str:
+        tlds  = ['xyz', 'tk', 'top', 'ml']
+        path  = random.choice(['/verify', '/secure', '/login', '/confirm'])
+        token = ''.join(random.choices(string.ascii_lowercase + string.digits, k=12))
+        return f"http://{brand.lower()}-{random.choice(['secure','account','login'])}.{random.choice(tlds)}{path}?token={token}"
+
+    def _generate_fake_sender(self, brand: str) -> str:
+        prefixes = ['no-reply', 'noreply', 'security', 'support', 'alerts']
+        tlds     = ['xyz', 'tk', '.com.secure.xyz', 'top']
+        return f"{random.choice(prefixes)}@{brand.lower()}-verify.{random.choice(tlds)}"
+
+    def _fake_phone(self) -> str:
+        return f"1-800-{random.randint(100,999)}-{random.randint(1000,9999)}"
+
+    def _build_teaching_notes(self, indicators: List, url: str, sender: str) -> str:
+        lines = [
+            "🎓 TRAINING NOTES — What to spot in a real phishing email:",
+            f"  Sender  : '{sender}' — note the suspicious domain",
+            f"  Link    : '{url}' — hover before clicking; check the real domain",
+        ]
+        lines.append("  Red flags:")
+        for ind in indicators:
+            lines.append(f"    ✗ {ind}")
+        lines.append("\n  ✅ When in doubt: delete, report, don't click.")
+        return "\n".join(lines)
+
+
+# ── Quick self-test ───────────────────────────────────────────────────────────
+
+if __name__ == '__main__':
+    sim = PhishingSimulator()
+    print("Available templates:", sim.list_templates())
+    print("\n" + "="*60)
+    result = sim.generate("invoice_fraud", brand="PayPal")
+    print(f"From   : {result.sender}")
+    print(f"Subject: {result.subject}")
+    print(f"\n{result.body}")
+    print(f"\n{result.teaching_notes}")
